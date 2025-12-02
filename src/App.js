@@ -1,3 +1,4 @@
+// --- App.jsx ---
 import { useEffect, useState } from 'react';
 import LoginButton from './components/LoginButton';
 import PlaylistForm from './components/PlaylistForm';
@@ -46,12 +47,6 @@ const moodMap = {
   "creative flow": "creative flow ambient"
 };
 
-const spotifySeedGenres = [
-  "acoustic","afrobeat","alt-rock","classical","country","dance","deep-house",
-  "disco","edm","electronic","hip-hop","jazz","metal","pop","punk",
-  "rap","reggae","rock","soul","trap","trip-hop"
-];
-
 function LoadingBar({ progress }) {
   return (
     <div style={{ width: '100%', background: '#111', height: 12, borderRadius: 6, overflow: 'hidden' }}>
@@ -69,7 +64,6 @@ async function TrackUrisFromRecommendations(token, params = {}, limit = 20) {
     });
     if (!res.ok) return [];
     const data = await res.json();
-    if (!data.tracks) return [];
     return (data.tracks || []).slice(0, actualLimit).map(t => t.uri);
   } catch {
     return [];
@@ -85,7 +79,6 @@ async function TrackUrisFromSearch(token, query, limit = 20) {
     });
     if (!res.ok) return [];
     const data = await res.json();
-    if (!data.tracks) return [];
     return (data.tracks.items || []).slice(0, actualLimit).map(t => t.uri);
   } catch {
     return [];
@@ -160,7 +153,7 @@ function App() {
     setPlaylistName('');
   }
 
-  async function generatePlaylist({ mode, mood, genre, artist, title, count }) {
+  async function generatePlaylist({ mode, mood, artist, artists, title, count }) {
     if (!accessToken) return alert('Please login to Spotify first.');
     setLoading(true);
     setProgress(5);
@@ -177,130 +170,145 @@ function App() {
         setUserId(currentUserId);
       }
 
-      const desired = Math.min(Math.max(Number(count) || 20, 1), 50);
+      const desired = Math.min(Math.max(Number(count) || 20, 1), 100);
       let uris = [];
 
-      if (mode === 'genre') {
-        setProgress(30);
-        const seed = genre.toLowerCase().trim();
-        if (!spotifySeedGenres.includes(seed)) {
-          console.warn(`"${seed}" is not a supported seed genre, falling back to search.`);
-          uris = await TrackUrisFromSearch(accessToken, genre, desired);
-        } else {
-          uris = await TrackUrisFromRecommendations(accessToken, { seed_genres: [seed] }, desired);
-        }
-
-        if (!uris || uris.length < desired) {
-          const more = await TrackUrisFromSearch(accessToken, genre, desired - (uris?.length || 0));
-          uris = (uris || []).concat(more).slice(0, desired);
-        }
-
-        setProgress(80);
-
-      } else if (mode === 'artist') {
-  setProgress(35);
-
-  const userInput = artist.toLowerCase().trim();
-
-  const qs = new URLSearchParams({
-    q: `artist:"${artist}"`,
-    type: 'artist',
-    limit: 10
-  }).toString();
-
-  const res = await fetch(`https://api.spotify.com/v1/search?${qs}`, {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
-
-  if (!res.ok) throw new Error('Artist search failed');
-
-  const data = await res.json();
-  const items = data.artists?.items || [];
-
-  if (items.length === 0) throw new Error('Artist not found');
-
-  let artistObj =
-    items.find(a => a.name.toLowerCase().trim() === userInput) ||
-    items[0];
-
-  const artistId = artistObj.id;
-
-  const trackPool = new Set();
-
-  setProgress(50);
-  try {
-    const topRes = await fetch(
-      `https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=US`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    if (topRes.ok) {
-      const topData = await topRes.json();
-      (topData.tracks || []).forEach(t => t.uri && trackPool.add(t.uri));
-    }
-  } catch {}
-
-  setProgress(65);
-  try {
-    const albRes = await fetch(
-      `https://api.spotify.com/v1/artists/${artistId}/albums?include_groups=album,single,compilation&limit=20`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-
-    if (albRes.ok) {
-      const albData = await albRes.json();
-      const albums = albData.items || [];
-
-      for (const album of albums.slice(0, 10)) {
-        const tRes = await fetch(
-          `https://api.spotify.com/v1/albums/${album.id}/tracks?limit=50`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        );
-
-        if (!tRes.ok) continue;
-
-        const tData = await tRes.json();
-        (tData.items || []).forEach(t => t.uri && trackPool.add(t.uri));
-      }
-    }
-  } catch {}
-
-  setProgress(80);
-  try {
-    const recs = await TrackUrisFromRecommendations(
-      accessToken,
-      { seed_artists: artistId },
-      50
-    );
-    recs.forEach(u => trackPool.add(u));
-  } catch {}
-
-  let allUris = Array.from(trackPool);
-  if (allUris.length === 0) throw new Error('No tracks found for this artist.');
-
-  for (let i = allUris.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [allUris[i], allUris[j]] = [allUris[j], allUris[i]];
-  }
-
-  const desiredArtistCount = Math.min(Math.max(Number(count) || 20, 1), 100);
-  uris = allUris.slice(0, desiredArtistCount);
-  setProgress(95);
-
-      } else {
+      if (mode === 'mood') {
         setProgress(30);
         const keywords = (moodMap[mood] || mood || '').trim();
         uris = await TrackUrisFromSearch(accessToken, keywords, desired);
         if (uris.length < desired) {
-          const seedGenres = keywords.split(' ').slice(0, 2).join(',');
-          const recs = await TrackUrisFromRecommendations(accessToken, { seed_genres: seedGenres }, desired - uris.length);
+          const recs = await TrackUrisFromRecommendations(accessToken, { seed_genres: 'pop' }, desired - uris.length);
           uris = uris.concat(recs).slice(0, desired);
         }
         setProgress(65);
+      } else if (mode === 'artist') {
+        setProgress(35);
+
+        const userInput = (artist || '').toLowerCase().trim();
+        if (!userInput) throw new Error('Artist name required');
+
+        const qs = new URLSearchParams({ q: `artist:"${artist}"`, type: 'artist', limit: 10 }).toString();
+        const res = await fetch(`https://api.spotify.com/v1/search?${qs}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+        if (!res.ok) throw new Error('Artist search failed');
+        const data = await res.json();
+        const items = data.artists?.items || [];
+        if (items.length === 0) throw new Error('Artist not found');
+
+        let artistObj = items.find(a => a.name.toLowerCase().trim() === userInput) || items[0];
+        const artistId = artistObj.id;
+
+        const trackPool = new Set();
+        setProgress(50);
+        try {
+          const topRes = await fetch(`https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=US`, { headers: { Authorization: `Bearer ${accessToken}` } });
+          if (topRes.ok) {
+            const topData = await topRes.json();
+            (topData.tracks || []).forEach(t => t.uri && trackPool.add(t.uri));
+          }
+        } catch {}
+
+        setProgress(65);
+        try {
+          const albRes = await fetch(`https://api.spotify.com/v1/artists/${artistId}/albums?include_groups=album,single,compilation&limit=20`, { headers: { Authorization: `Bearer ${accessToken}` } });
+          if (albRes.ok) {
+            const albData = await albRes.json();
+            const albums = albData.items || [];
+            for (const album of albums.slice(0, 10)) {
+              const tRes = await fetch(`https://api.spotify.com/v1/albums/${album.id}/tracks?limit=50`, { headers: { Authorization: `Bearer ${accessToken}` } });
+              if (!tRes.ok) continue;
+              const tData = await tRes.json();
+              (tData.items || []).forEach(t => t.uri && trackPool.add(t.uri));
+            }
+          }
+        } catch {}
+
+        setProgress(80);
+        try {
+          const recs = await TrackUrisFromRecommendations(accessToken, { seed_artists: artistId }, 50);
+          recs.forEach(u => trackPool.add(u));
+        } catch {}
+
+        let allUris = Array.from(trackPool);
+        if (allUris.length === 0) throw new Error('No tracks found for this artist.');
+
+        for (let i = allUris.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [allUris[i], allUris[j]] = [allUris[j], allUris[i]];
+        }
+
+        const desiredArtistCount = Math.min(Math.max(Number(count) || 20, 1), 100);
+        uris = allUris.slice(0, desiredArtistCount);
+        setProgress(95);
+
+      } else if (mode === 'multi-artist') {
+        setProgress(30);
+        const provided = (artists || []).map(a => a && a.trim()).filter(Boolean).slice(0,3);
+        if (provided.length < 2) throw new Error('Please provide at least 2 artists for multi-artist mode');
+
+        const trackPool = new Set();
+
+        let iProgress = 30;
+        for (const name of provided) {
+          iProgress += 20;
+          setProgress(Math.min(iProgress, 90));
+
+          try {
+            const qs = new URLSearchParams({ q: `artist:"${name}"`, type: 'artist', limit: 5 }).toString();
+            const res = await fetch(`https://api.spotify.com/v1/search?${qs}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+            if (!res.ok) continue;
+            const data = await res.json();
+            const artistObj = data.artists?.items?.find(a => a.name.toLowerCase().trim() === name.toLowerCase().trim()) || data.artists?.items?.[0];
+            if (!artistObj) continue;
+            const artistId = artistObj.id;
+
+            try {
+              const topRes = await fetch(`https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=US`, { headers: { Authorization: `Bearer ${accessToken}` } });
+              if (topRes.ok) {
+                const topData = await topRes.json();
+                (topData.tracks || []).forEach(t => t.uri && trackPool.add(t.uri));
+              }
+            } catch {}
+
+            try {
+              const albRes = await fetch(`https://api.spotify.com/v1/artists/${artistId}/albums?include_groups=album,single,compilation&limit=10`, { headers: { Authorization: `Bearer ${accessToken}` } });
+              if (albRes.ok) {
+                const albData = await albRes.json();
+                const albums = albData.items || [];
+                for (const album of albums.slice(0,5)) {
+                  const tRes = await fetch(`https://api.spotify.com/v1/albums/${album.id}/tracks?limit=50`, { headers: { Authorization: `Bearer ${accessToken}` } });
+                  if (!tRes.ok) continue;
+                  const tData = await tRes.json();
+                  (tData.items || []).forEach(t => t.uri && trackPool.add(t.uri));
+                }
+              }
+            } catch {}
+
+            try {
+              const recs = await TrackUrisFromRecommendations(accessToken, { seed_artists: artistId }, 30);
+              recs.forEach(u => trackPool.add(u));
+            } catch {}
+
+          } catch (e) {
+            console.warn('multi-artist fetch error for', name, e);
+          }
+        }
+
+        let allUris = Array.from(trackPool);
+        if (allUris.length === 0) throw new Error('No tracks found for provided artists.');
+
+        for (let i = allUris.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [allUris[i], allUris[j]] = [allUris[j], allUris[i]];
+        }
+
+        uris = allUris.slice(0, Math.min(desired, 100));
+        setProgress(95);
       }
 
       if (!uris || uris.length === 0) throw new Error('No tracks found for that selection.');
 
-      const finalName = title || (mode === 'genre' ? `Genre: ${genre}` : mode === 'artist' ? `Artist: ${artist}` : `Mood: ${mood}`);
+      const finalName = title || (mode === 'mood' ? `Mood: ${mood}` : mode === 'artist' ? `Artist: ${artist}` : `Multi-Artist Mix (${(artists||[]).filter(Boolean).slice(0,3).join(', ')})`);
       setProgress(90);
       const playlist = await createPlaylistAndAddTracks(accessToken, currentUserId, finalName, uris);
       setPlaylistUrl(playlist.external_urls?.spotify || `https://open.spotify.com/playlist/${playlist.id}`);
@@ -325,7 +333,7 @@ function App() {
           </div>
 
           <h1 style={{ color: '#fff', marginBottom: 8 }}>Spotify Playlist Generator</h1>
-          <p style={{ color: '#ddd' }}>Login to Spotify to create playlists from moods, genres, or artists.</p>
+          <p style={{ color: '#ddd' }}>Login to Spotify to create playlists from moods or artists.</p>
 
           <div style={{ marginTop: 20 }}>
             <LoginButton onClick={() => loginWithPKCE()}>Login with Spotify</LoginButton>
@@ -376,3 +384,4 @@ function App() {
 }
 
 export default App;
+
