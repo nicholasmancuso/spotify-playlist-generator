@@ -2,7 +2,7 @@
   "name": "spotify-playlist-generator",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://doug42069.github.io/spotify-playlist-generator",
+  "homepage": "https://nicholasmancuso.github.io/spotify-playlist-generator/",
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
